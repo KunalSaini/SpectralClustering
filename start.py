@@ -34,7 +34,7 @@ def GetInputDataFile():
     dataFile = None
     k = None
     csvList = glob.glob("data/*.csv")
-    print("select a data file to run Lloyd's algorithm")
+    print("select a data file to run spectral clustering")
     for idx, filePath in enumerate(csvList):
         print(f'({idx}) {filePath}')
     dataFileIndex = int(input("select option "))
@@ -58,75 +58,6 @@ def GetDistance(x, y):
     calculate Euclidean distance between two n dimentional points
     '''
     return math.sqrt(sum([(a - b) ** 2 for a, b in zip(x, y)]))
-
-def GetDistanceOfAPointFromAllCenters(existingCenters, point):
-    closestDistance = math.inf
-    for center in existingCenters:
-        closestDistance = min(closestDistance, GetDistance(center, point)) 
-    return closestDistance
-
-def GetNextCenter(existingCenters, data):
-    maxDistance = 0
-    nextCenter = None
-    for point in data:
-        distance = GetDistanceOfAPointFromAllCenters(existingCenters, point)
-        if(distance > maxDistance):
-            maxDistance = distance
-            nextCenter = point
-    return (nextCenter, maxDistance)
-
-
-def ComputeCenters(data, k):
-    ## ramdomly select 1 starting point
-    centroides = random.sample(data, 1)
-    maxDistance = 0
-    i = 1
-    while i < k :
-        nextCenter, maxDistance = GetNextCenter(centroides, data)
-        centroides.append(nextCenter)
-        i+=1
-    return (centroides, maxDistance)
-
-def plotAndSave(plotFileName, centroides, data):
-    '''
-    create scatter plot
-    '''
-    #nbrFormat = '{:0>3}'.format(nbr)
-    title = 'centers calculated with Greedy K Centers algorithm.'
-    fig, ax = plt.subplots(1, figsize=(10, 6))
-    ax.set(title=title)
-    x = [i[0] for i in data]
-    y = [i[1] for i in data]
-    ax.scatter(x, y, color='y', s=50)
-    for center in centroides:
-        ax.scatter(center[0], center[1], color='black', s=5)
-    ax.grid(True)
-    fig.tight_layout()
-    #filePath = os.path.join('images', plotFileName)
-    #plt.savefig(filePath)
-    plt.show()
-    plt.close()
-
-def GaussianSimilarityFunction(p1, p2, sigma):
-    disSquare = sum([(a - b) ** 2 for a, b in zip(p1, p2)])/(2*pow(sigma, 2))
-    similaritySocre = math.exp(-1*disSquare)
-    return similaritySocre
-
-def DiagMatrixHelper(x, y, AdjacencyMatrix):
-    if x!=y :
-        return 0
-    else :
-        return sum(AdjacencyMatrix[x])
-
-
-def test_numpy_eig(a):
-    eigenValues, eigenVectors = np.linalg.eig(a)
-    idx = eigenValues.argsort()[::1] # sort smallest to largest eignevalue
-    idx = idx[0:3] # take indexes corrosponding to 3 smallest eignevalue 
-    eigenValues = eigenValues[idx]
-    print(eigenValues)  
-    eigenVectors = eigenVectors[:,idx] # order corresponding eignevectors
-    return eigenVectors
 
 def Assign(centroides, data):
     '''
@@ -189,7 +120,6 @@ def CalculatePartitions(data, k, epsilon, maxIterations):
         if significientDifference:
             centroides = newCentroides
             mapped = Assign(centroides, data)
-    plotAndSave(itr, centroides, data)
         
     C = [centroides.index(x['closestCentroid'])+1 for x in mapped]
     # OUTPUT
@@ -197,20 +127,63 @@ def CalculatePartitions(data, k, epsilon, maxIterations):
     # (ii) - cluster index vector C ∈{ 1,2,3…K }^N, Where C(i)=j indicates that the ith row of X belongs to cluster j
     return (centroides, C)
 
-def ComputeSimilarityMatrix(data, sigma):
-    dataCount = len(data)
-    AdjacencyMatrix = [[GaussianSimilarityFunction(data[x], data[y], sigma) for x in range(dataCount)] for y in range(dataCount)] 
-    DiagonalMatrix = [[DiagMatrixHelper(x,y, AdjacencyMatrix) for x in range(dataCount)] for y in range(dataCount)]
-    LaplacianMatrix = [[DiagonalMatrix[x][y]-AdjacencyMatrix[x][y] for x in range(dataCount)] for y in range(dataCount)] # DiagonalMatrix - AdjacencyMatrix
-    eigen = test_numpy_eig(LaplacianMatrix)
-    CalculatePartitions(eigen.tolist(), 5, 10**-5, 50)
-    print(eigen)
+colors = list(mcolors.CSS4_COLORS.keys())
 
+
+def plotCluster(originalData, C):
+    title = 'clusters computed with spectral clustring'
+    fig, ax = plt.subplots(1, figsize=(10, 6))
+    ax.set(title=title)
+    for idx, val in enumerate(originalData):
+        ax.scatter(val[0], val[1], color=colors[C[idx]+10], s=50)
+    ax.grid(True)
+    fig.tight_layout()
+    plt.savefig(f'images/{title}.png')
+    plt.show()
+    plt.close()
+
+def GaussianSimilarityFunction(p1, p2, sigma):
+    disSquare = sum([(a - b) ** 2 for a, b in zip(p1, p2)])/(2*pow(sigma, 2))
+    similaritySocre = math.exp(-1*disSquare)
+    return similaritySocre
+
+def DiagMatrixHelper(x, y, AdjacencyMatrix):
+    if x!=y :
+        return 0
+    else :
+        return sum(AdjacencyMatrix[x])
+
+
+def GetEigneVectorsForSmallEigenValues(a, k):
+    eigenValues, eigenVectors = np.linalg.eig(a)
+    idx = eigenValues.argsort()[::1] # sort smallest to largest eignevalue
+    idx = idx[0:k] # take indexes corrosponding to k smallest eignevalue 
+    eigenValues = eigenValues[idx]
+    print(eigenValues)  
+    eigenVectors = eigenVectors[idx] # order corresponding eignevectors
+    return eigenVectors
+
+def ComputeClustering(data, k=2, sigma=0.3, epsilon=10**-5, maxIterations=50):
+    dataCount = len(data)
+    # Compute adjacency matrix based on Gaussian Similarity function
+    AdjacencyMatrix = [[GaussianSimilarityFunction(data[x], data[y], sigma) for x in range(dataCount)] for y in range(dataCount)] 
+    # Compute diagonal matrix from adjacency matrix
+    DiagonalMatrix = [[DiagMatrixHelper(x,y, AdjacencyMatrix) for x in range(dataCount)] for y in range(dataCount)]
+    # Compute laplacian matrix L = D - A
+    LaplacianMatrix = [[ DiagonalMatrix[x][y]-AdjacencyMatrix[x][y] for x in range(dataCount)] for y in range(dataCount)] # DiagonalMatrix - AdjacencyMatrix
+    # Compute eigen vectors corrosponding to k smallest eigen values
+    eigen = GetEigneVectorsForSmallEigenValues(LaplacianMatrix, k)
+    # Arrange egien vectors as column in a new U matrix
+    U = np.transpose(eigen).tolist()
+    # Perform K mean clustering on U
+    _, C = CalculatePartitions(U, k, epsilon, maxIterations)
+    return (C, AdjacencyMatrix, U)
+    
 if __name__ == "__main__":
     print("Spectral clustering")
     dataFile, k, savePlot, sigma = GetInputDataFile()
-    
     print(f"reading file from {dataFile}")
+    
     data = []
     with open(dataFile, 'r') as csvfile:
         spamreader = csv.reader(csvfile, delimiter=',')
@@ -218,10 +191,7 @@ if __name__ == "__main__":
             dataRow = [float(row[0]),float(row[1])]
             data.append(dataRow)
     
-    ComputeSimilarityMatrix(data,sigma)
-    # print('centroides', centroides)
-    # print('objective function value', objFunctionValue)
-    # if savePlot:
-    #     _, tail = os.path.split(dataFile)
-    #     plotFileName = tail + '.scatterplot.png'
-    #     plotAndSave(plotFileName, centroides, data)
+    C,_,_ = ComputeClustering(data, k, sigma)
+
+    if savePlot:
+        plotCluster(data, C)
